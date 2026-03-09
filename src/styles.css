@@ -24,6 +24,8 @@ body {
   overflow: hidden;
 }
 
+/* Prize sunburst: WebGL canvas is positioned via inline style (z-index: 0, behind card and scene) */
+
 .loading {
   color: white;
   font-size: 24px;
@@ -761,6 +763,118 @@ body {
   }
 }
 
+.neon-intro-wrapper {
+  position: relative;
+  z-index: 1;
+}
+
+.neon-intro-wrapper--above-video {
+  z-index: 11;
+}
+
+.neon-intro-card {
+  position: fixed;
+  top: 45vh;
+  top: 45dvh; /* visible viewport center (matches where the 3D box appears) */
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Initially hidden; reveal runs when --animating is set */
+.neon-intro-card .neon-intro-frame {
+  clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+}
+
+.neon-intro-card.neon-intro-card--animating .neon-intro-frame {
+  animation: neon-intro-clip-reveal 0.5s ease-out forwards;
+}
+
+@keyframes neon-intro-clip-reveal {
+  0% {
+    clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+  }
+  100% {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  }
+}
+
+@media (max-width: 768px) {
+  .neon-intro-card {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .neon-intro-card .neon-intro-panel {
+    min-width: 18em;
+    max-width: 306px;
+    box-sizing: border-box;
+  }
+}
+
+.neon-intro-card .neon-sign-inline-char {
+  animation: neon-power-on 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation-delay: calc(var(--i) * 0.04s);
+}
+
+.neon-intro-frame {
+  padding: 10px;
+  background: linear-gradient(145deg, #2a2a2a 0%, #1a1a1a 50%, #0d0d0d 100%);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 20px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.neon-intro-panel {
+  position: relative;
+  background: #050505;
+  padding: 1.5rem 2rem;
+  border-radius: 4px;
+  overflow: visible;
+  box-shadow:
+    inset 0 0 80px rgba(0, 0, 0, 0.7),
+    inset 0 0 100px rgba(127, 255, 127, 0.18),
+    inset 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.neon-intro-panel::before,
+.neon-intro-panel::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle at 35% 35%, #3a3a3a, #151515);
+  border-radius: 50%;
+  border: 1px solid #252525;
+  top: 12px;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.06);
+}
+
+.neon-intro-panel::before {
+  left: 12px;
+}
+
+.neon-intro-panel::after {
+  right: 12px;
+}
+
+.neon-intro-glass {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    transparent 30%,
+    transparent 70%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  mix-blend-mode: overlay;
+}
+
 .neon-theme-selector {
   position: absolute;
   bottom: 1rem;
@@ -812,23 +926,38 @@ body {
   --neon-ambient: rgba(127, 255, 127, 0.18);
 }
 
+.grail-card-fixed-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1; /* above prize sunburst (z-index: 0) so card and clock appear in front */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  /* padding-top: 3rem; */
+  pointer-events: none;
+}
+
 .grail-card-assembly {
   position: absolute;
-  top: 1.5rem;
+  top: 3.8rem;
   left: 50%;
-  transform: translateX(-50%);
   z-index: 10;
   max-width: min(320px, calc(100vw - 2rem));
   transform-style: preserve-3d;
-  animation: grail-card-appear 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-  opacity: 0;
 }
 
-@keyframes grail-card-appear {
-  to {
-    opacity: 1;
+@media (max-width: 768px) {
+  .grail-card-assembly {
+    top: 2rem;
   }
 }
+
+.grail-card-assembly.grail-card-descent {
+  opacity: 1;
+  transition: transform 0.1s linear;
+  will-change: transform;
+}
+
 
 .grail-card-frame {
   position: relative;
@@ -842,16 +971,28 @@ body {
     0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
+@media (max-width: 768px) {
+  .grail-card-frame {
+    padding: 8px;
+  }
+}
+
 .grail-card-panel {
   position: relative;
   background: var(--panel-bg);
-  padding: 2rem 1.5rem 2.5rem;
+  padding: 2rem 1.5rem 2rem;
   border-radius: 4px;
   overflow: visible;
   box-shadow:
     inset 0 0 80px rgba(0, 0, 0, 0.7),
     inset 0 0 100px var(--neon-ambient),
     inset 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+@media (max-width: 768px) {
+  .grail-card-panel {
+    padding: 28px 24px;
+  }
 }
 
 .grail-card-panel::before,
@@ -899,6 +1040,12 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  .grail-card-neon--image {
+    width: 240px;
+  }
 }
 
 .grail-card-panel-image {

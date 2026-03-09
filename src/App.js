@@ -4,7 +4,7 @@ import { Environment } from '@react-three/drei'
 import './styles.css'
 import { Box3D } from './Box3D'
 import { FingerIcon } from './HandIcon'
-import { Fireworks } from './Fireworks'
+import { PrizeSunburst } from './PrizeSunburst'
 import { GrailVaultsCard } from './GrailVaultsCard'
 import { NEON_THEMES } from './NeonSign'
 
@@ -16,6 +16,9 @@ export const App = () => {
   )
 }
 
+const CARD_APPEARANCE_START_BEFORE_END = 1.4
+const CARD_APPEARANCE_DURATION = 1.4
+
 function MainAnimation() {
   const containerRef = useRef(null)
   const videoRef = useRef(null)
@@ -23,22 +26,44 @@ function MainAnimation() {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [showContent, setShowContent] = useState(false)
   const [videoStarted, setVideoStarted] = useState(false)
-  const [showFireworks, setShowFireworks] = useState(false)
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0)
+  const [showPrizeSunburst, setShowPrizeSunburst] = useState(false)
   const [showFingerOverlay, setShowFingerOverlay] = useState(false)
   const [showGrailCard, setShowGrailCard] = useState(false)
   const [neonTheme, setNeonTheme] = useState('emerald')
   const box3DRef = useRef(null)
 
+  const cardVisible =
+    videoDuration > 0 &&
+    videoCurrentTime >= videoDuration - CARD_APPEARANCE_START_BEFORE_END
+  const cardProgress = !cardVisible
+    ? 0
+    : Math.min(
+        1,
+        (videoCurrentTime -
+          (videoDuration - CARD_APPEARANCE_START_BEFORE_END)) /
+          CARD_APPEARANCE_DURATION
+      )
+
   const handleVideoTimeUpdate = () => {
     const video = videoRef.current
     if (!video) return
-
+    setVideoCurrentTime(video.currentTime)
     if (video.currentTime > 0 && !videoStarted) {
       setVideoStarted(true)
-      setTimeout(() => {
-        setShowContent(true)
-      }, 1000)
+      setTimeout(() => setShowContent(true), 1000)
     }
+  }
+
+  const handleVideoEnded = () => {
+    if (!showContent) setShowContent(true)
+  }
+
+  const handleVideoLoadedMetadata = () => {
+    const video = videoRef.current
+    if (video && Number.isFinite(video.duration))
+      setVideoDuration(video.duration)
   }
 
   useEffect(() => {
@@ -76,20 +101,28 @@ function MainAnimation() {
       video.addEventListener('canplay', playVideo, { once: true })
       video.addEventListener('loadeddata', playVideo, { once: true })
     }
-
-    const fallbackTimer = setTimeout(() => {
-      if (!videoStarted && video.currentTime > 0) {
-        setVideoStarted(true)
-        setTimeout(() => {
-          setShowContent(true)
-        }, 1000)
-      }
-    }, 1000)
-
-    return () => {
-      clearTimeout(fallbackTimer)
+    if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
+    const onMeta = () => {
+      if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
     }
-  }, [videoStarted])
+    video.addEventListener('loadedmetadata', onMeta)
+    return () => video.removeEventListener('loadedmetadata', onMeta)
+  }, [])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !videoDuration) return
+    let rafId
+    const tick = () => {
+      const t = video.currentTime
+      const inCardWindow =
+        t >= videoDuration - CARD_APPEARANCE_START_BEFORE_END
+      if (inCardWindow) setVideoCurrentTime(t)
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [videoDuration])
 
   useEffect(() => {
     const img = new Image()
@@ -101,7 +134,11 @@ function MainAnimation() {
   }, [])
 
   if (!imageLoaded) {
-    return <div className="loading"></div>
+    return (
+      <>
+        <div className="loading" />
+      </>
+    )
   }
 
   const aspectRatio = imageSize.width / imageSize.height
@@ -120,17 +157,11 @@ function MainAnimation() {
         preload="auto"
         loop={false}
         onTimeUpdate={handleVideoTimeUpdate}
+        onEnded={handleVideoEnded}
+        onLoadedMetadata={handleVideoLoadedMetadata}
         onPlay={() => {
           const video = videoRef.current
-          if (video) {
-            video.playbackRate = 1.2
-          }
-          if (!videoStarted) {
-            setVideoStarted(true)
-            setTimeout(() => {
-              setShowContent(true)
-            }, 2000)
-          }
+          if (video) video.playbackRate = 1.2
         }}
         style={{
           position: 'fixed',
@@ -142,6 +173,20 @@ function MainAnimation() {
           zIndex: showContent ? 0 : 10,
         }}
       />
+
+      {cardVisible && (
+        <div
+          className="grail-card-fixed-layer"
+          style={{ pointerEvents: 'none' }}
+          aria-hidden="true"
+        >
+          <GrailVaultsCard
+            visible
+            descentProgress={cardProgress}
+            appearanceDuration={CARD_APPEARANCE_DURATION}
+          />
+        </div>
+      )}
 
       {showContent && (
         <div
@@ -187,12 +232,11 @@ function MainAnimation() {
                   setShowFingerOverlay(true)
                   setShowGrailCard(true)
                 }}
-                onCelebrationStart={() => setShowFireworks(true)}
+                onCelebrationStart={() => setShowPrizeSunburst(true)}
                 neonTheme={neonTheme}
               />
             </Suspense>
           </Canvas>
-          <GrailVaultsCard visible={showGrailCard} />
           <FingerIcon
             visible={showFingerOverlay}
             onClick={() => {
@@ -216,7 +260,7 @@ function MainAnimation() {
         </div>
       )}
 
-      {showFireworks && <Fireworks />}
+      {showPrizeSunburst && <PrizeSunburst />}
     </>
   )
 }

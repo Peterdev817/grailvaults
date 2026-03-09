@@ -27,13 +27,15 @@ export const Box3D = forwardRef(function Box3D({
   const boxLowerTargetY = -1.5
   const boxOpenStartYRef = useRef(0)
   const afterClickStartTimeRef = useRef(null)
+  const celebrationScheduledRef = useRef(false)
+  const celebrationTimeoutRef = useRef(null)
   const boxOffScreenY = -15
   const afterClickDuration = 2
+  const celebrationDelayMs = 0
   const watchStraightenDuration = 1
   const watchTiltRad = 0.2
   const watchOriginalScale = 1 / 0.7
-  const bounceAmplitude = 0.04
-  const bouncePeriod = 1
+  const autoAdvanceDelayMs = 200
   const BOX_SCALE = 20
   const CARD_INSIDE_BOX_SCALE = 0.6
 
@@ -153,11 +155,6 @@ export const Box3D = forwardRef(function Box3D({
       }
     }
 
-    if (phase === 'done' && watchGroupRef.current) {
-      const y = bounceAmplitude * Math.sin(state.clock.elapsedTime * (2 * Math.PI / bouncePeriod))
-      watchGroupRef.current.position.y = y
-    }
-
     if (phase === 'afterClick') {
       if (afterClickStartTimeRef.current == null) afterClickStartTimeRef.current = state.clock.getElapsedTime()
       const elapsed = state.clock.getElapsedTime() - afterClickStartTimeRef.current
@@ -174,12 +171,21 @@ export const Box3D = forwardRef(function Box3D({
         watchGroupRef.current.scale.setScalar(s)
       }
 
-      if (tBox >= 1) {
+      if (tBox >= 1 && !celebrationScheduledRef.current) {
+        celebrationScheduledRef.current = true
         setPhase('interactive')
-        onCelebrationStart?.()
+        celebrationTimeoutRef.current = setTimeout(() => {
+          onCelebrationStart?.()
+        }, celebrationDelayMs)
       }
     }
   })
+
+  useEffect(() => {
+    return () => {
+      if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current)
+    }
+  }, [])
 
   const startBoxOpen = () => {
     if (phase !== 'waitingForClick') return
@@ -199,6 +205,12 @@ export const Box3D = forwardRef(function Box3D({
   }
 
   useImperativeHandle(ref, () => ({ startBoxOpen }), [phase, names, actions])
+
+  useEffect(() => {
+    if (phase !== 'done') return
+    const t = setTimeout(() => setPhase('afterClick'), autoAdvanceDelayMs)
+    return () => clearTimeout(t)
+  }, [phase])
 
   const handleWatchClick = (e) => {
     e.stopPropagation()
