@@ -1,12 +1,17 @@
 import { useRef, useEffect, useState, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Environment } from '@react-three/drei'
+import { Environment, useGLTF } from '@react-three/drei'
 import './styles.css'
 import { Box3D } from './Box3D'
-import { FingerIcon } from './HandIcon'
-import { PrizeSunburst } from './PrizeSunburst'
-import { GrailVaultsCard } from './GrailVaultsCard'
+import { Table3D } from './Table3D'
+import { PrizeSunburstMesh } from './PrizeSunburstMesh'
 import { NEON_THEMES } from './NeonSign'
+
+const TABLE_SCENE_AT_VIDEO_SEC = 7
+const BOX_AFTER_TABLE_DELAY_MS = 550
+const TABLE_BOX_Z = -2.28
+const BOX_HERO_Z_OFFSET = 1.68
+const PRIZE_SUNBURST_Z = TABLE_BOX_Z + BOX_HERO_Z_OFFSET * 0.57
 
 export const App = () => {
   return (
@@ -16,55 +21,36 @@ export const App = () => {
   )
 }
 
-const CARD_APPEARANCE_START_BEFORE_END = 1.4
-const CARD_APPEARANCE_DURATION = 1.4
-
 function MainAnimation() {
   const containerRef = useRef(null)
   const videoRef = useRef(null)
   const [imageLoaded, setImageLoaded] = useState(false)
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
-  const [showContent, setShowContent] = useState(false)
-  const [videoStarted, setVideoStarted] = useState(false)
-  const [videoDuration, setVideoDuration] = useState(0)
-  const [videoCurrentTime, setVideoCurrentTime] = useState(0)
+  const [sceneRevealed, setSceneRevealed] = useState(false)
+  const [tableSurfaceY, setTableSurfaceY] = useState(null)
+  const [showBox, setShowBox] = useState(false)
   const [showPrizeSunburst, setShowPrizeSunburst] = useState(false)
-  const [showFingerOverlay, setShowFingerOverlay] = useState(false)
-  const [showGrailCard, setShowGrailCard] = useState(false)
   const [neonTheme, setNeonTheme] = useState('emerald')
-  const box3DRef = useRef(null)
 
-  const cardVisible =
-    videoDuration > 0 &&
-    videoCurrentTime >= videoDuration - CARD_APPEARANCE_START_BEFORE_END
-  const cardProgress = !cardVisible
-    ? 0
-    : Math.min(
-        1,
-        (videoCurrentTime -
-          (videoDuration - CARD_APPEARANCE_START_BEFORE_END)) /
-          CARD_APPEARANCE_DURATION
-      )
+  useEffect(() => {
+    useGLTF.preload('/box.glb')
+    useGLTF.preload('/table.glb')
+  }, [])
 
   const handleVideoTimeUpdate = () => {
     const video = videoRef.current
     if (!video) return
-    setVideoCurrentTime(video.currentTime)
-    if (video.currentTime > 0 && !videoStarted) {
-      setVideoStarted(true)
-      setTimeout(() => setShowContent(true), 1000)
-    }
+    if (video.currentTime >= TABLE_SCENE_AT_VIDEO_SEC) setSceneRevealed(true)
   }
 
   const handleVideoEnded = () => {
-    if (!showContent) setShowContent(true)
+    setSceneRevealed(true)
   }
 
-  const handleVideoLoadedMetadata = () => {
-    const video = videoRef.current
-    if (video && Number.isFinite(video.duration))
-      setVideoDuration(video.duration)
-  }
+  useEffect(() => {
+    if (!sceneRevealed) return
+    const t = window.setTimeout(() => setShowBox(true), BOX_AFTER_TABLE_DELAY_MS)
+    return () => window.clearTimeout(t)
+  }, [sceneRevealed])
 
   useEffect(() => {
     const video = videoRef.current
@@ -101,34 +87,12 @@ function MainAnimation() {
       video.addEventListener('canplay', playVideo, { once: true })
       video.addEventListener('loadeddata', playVideo, { once: true })
     }
-    if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
-    const onMeta = () => {
-      if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
-    }
-    video.addEventListener('loadedmetadata', onMeta)
-    return () => video.removeEventListener('loadedmetadata', onMeta)
   }, [])
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video || !videoDuration) return
-    let rafId
-    const tick = () => {
-      const t = video.currentTime
-      const inCardWindow =
-        t >= videoDuration - CARD_APPEARANCE_START_BEFORE_END
-      if (inCardWindow) setVideoCurrentTime(t)
-      rafId = requestAnimationFrame(tick)
-    }
-    rafId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafId)
-  }, [videoDuration])
 
   useEffect(() => {
     const img = new Image()
     img.src = '/watch1.png'
     img.onload = () => {
-      setImageSize({ width: img.width, height: img.height })
       setImageLoaded(true)
     }
   }, [])
@@ -140,10 +104,6 @@ function MainAnimation() {
       </>
     )
   }
-
-  const aspectRatio = imageSize.width / imageSize.height
-  const contentHeight = 400
-  const contentWidth = contentHeight * aspectRatio
 
   return (
     <>
@@ -158,10 +118,10 @@ function MainAnimation() {
         loop={false}
         onTimeUpdate={handleVideoTimeUpdate}
         onEnded={handleVideoEnded}
-        onLoadedMetadata={handleVideoLoadedMetadata}
         onPlay={() => {
           const video = videoRef.current
           if (video) video.playbackRate = 1.2
+          handleVideoTimeUpdate()
         }}
         style={{
           position: 'fixed',
@@ -170,97 +130,101 @@ function MainAnimation() {
           width: '100vw',
           height: '100vh',
           objectFit: 'cover',
-          zIndex: showContent ? 0 : 10,
+          zIndex: sceneRevealed ? 0 : 1,
+          pointerEvents: sceneRevealed ? 'none' : 'auto',
         }}
       />
 
-      {cardVisible && (
-        <div
-          className="grail-card-fixed-layer"
-          style={{ pointerEvents: 'none' }}
-          aria-hidden="true"
-        >
-          <GrailVaultsCard
-            visible
-            descentProgress={cardProgress}
-            appearanceDuration={CARD_APPEARANCE_DURATION}
-          />
-        </div>
-      )}
-
-      {showContent && (
-        <div
-          ref={containerRef}
-          className="scene-container canvas-fullscreen"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            zIndex: 2,
-            pointerEvents: 'auto',
+      <div
+        ref={containerRef}
+        className="scene-container canvas-fullscreen"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: sceneRevealed ? 2 : 0,
+          pointerEvents: sceneRevealed ? 'auto' : 'none',
+          isolation: sceneRevealed ? 'isolate' : 'auto',
+        }}
+      >
+        <Canvas
+          camera={{
+            position: [0, 0, 6.35],
+            fov: 42,
+            near: 0.1,
+            far: 100,
           }}
+          gl={{ alpha: true, antialias: true }}
+          onCreated={({ gl, scene }) => {
+            gl.setClearColor(0x000000, 0)
+            scene.background = null
+          }}
+          style={{ width: '100%', height: '100%', background: 'transparent' }}
         >
-          <Canvas
-            camera={{
-              position: [0, 0, 5],
-              fov: 50,
-              near: 0.1,
-              far: 100,
-            }}
-            style={{ width: '100%', height: '100%', background: 'transparent' }}
-          >
-            <ambientLight intensity={0.25} />
-            <hemisphereLight
-              args={['#e8e4dc', '#4a4a4a', 0.4]}
-            />
-            <directionalLight position={[8, 10, 6]} intensity={0.5} />
-            <directionalLight position={[-8, 8, 4]} intensity={0.2} />
-            <directionalLight position={[0, -3, 2]} intensity={0.15} />
-            <pointLight position={[0, 2, 3]} intensity={0.2} distance={8} />
+          <ambientLight intensity={0.25} />
+          <hemisphereLight
+            args={['#e8e4dc', '#4a4a4a', 0.4]}
+          />
+          <directionalLight position={[8, 10, 6]} intensity={0.5} />
+          <directionalLight position={[-8, 8, 4]} intensity={0.2} />
+          <directionalLight position={[0, -3, 2]} intensity={0.15} />
+          <pointLight position={[0, 2, 3]} intensity={0.2} distance={8} />
+          <Suspense fallback={null}>
             <Environment preset="sunset" environmentIntensity={0.5} />
-            
+          </Suspense>
+
+          {sceneRevealed && (
+            <Suspense fallback={null}>
+              <Table3D
+                modelScale={1.52}
+                position={[0, -1.35, TABLE_BOX_Z]}
+                onSurfaceReady={setTableSurfaceY}
+              />
+            </Suspense>
+          )}
+          {sceneRevealed && showPrizeSunburst && (
+            <PrizeSunburstMesh z={PRIZE_SUNBURST_Z} y={0.06} planeSize={20} />
+          )}
+          {sceneRevealed && showBox && (
             <Suspense fallback={null}>
               <Box3D
-                ref={box3DRef}
                 scale={1.365}
-                position={[0, 0, 0]}
-                rotation={[0.2, 0, 0]}
+                restScale={0.42}
+                heroPositionY={-0.26}
+                heroZOffset={BOX_HERO_Z_OFFSET}
+                boxOpenDropY={0.58}
+                position={[0, 0, TABLE_BOX_Z]}
+                restRotation={[0, 0, 0]}
+                rotation={[0.36, 0, 0]}
+                tableSurfaceY={tableSurfaceY ?? -1.12}
                 onAppear={() => {}}
-                onWaitingForClick={() => {
-                  setShowFingerOverlay(true)
-                  setShowGrailCard(true)
-                }}
                 onCelebrationStart={() => setShowPrizeSunburst(true)}
                 neonTheme={neonTheme}
               />
             </Suspense>
-          </Canvas>
-          <FingerIcon
-            visible={showFingerOverlay}
-            onClick={() => {
-              setShowFingerOverlay(false)
-              box3DRef.current?.startBoxOpen?.()
-            }}
-          />
-          <div className="neon-theme-selector" aria-label="Neon sign theme">
-            {NEON_THEMES.map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={`neon-theme-btn ${neonTheme === t ? 'active' : ''}`}
-                onClick={() => setNeonTheme(t)}
-                title={`${t.charAt(0).toUpperCase() + t.slice(1)} neon`}
-              >
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+          )}
+        </Canvas>
+        {sceneRevealed && (
+          <>
+            <div className="neon-theme-selector" aria-label="Neon sign theme">
+              {NEON_THEMES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`neon-theme-btn ${neonTheme === t ? 'active' : ''}`}
+                  onClick={() => setNeonTheme(t)}
+                  title={`${t.charAt(0).toUpperCase() + t.slice(1)} neon`}
+                >
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
-      {showPrizeSunburst && <PrizeSunburst />}
     </>
   )
 }

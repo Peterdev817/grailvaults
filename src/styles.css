@@ -423,6 +423,73 @@ body {
   }
 }
 
+.tap-prompt-html {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  padding: 8px 12px;
+}
+
+.tap-prompt-glow {
+  position: absolute;
+  inset: -28px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(72, 180, 100, 0.35) 0%,
+    rgba(48, 140, 80, 0.12) 45%,
+    transparent 70%
+  );
+  pointer-events: none;
+  animation: tapPromptGlow 2.2s ease-in-out infinite;
+}
+
+.tap-prompt-chevron {
+  position: relative;
+  z-index: 1;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  animation: tapPromptFloat 2s ease-in-out infinite;
+}
+
+.tap-prompt-label {
+  position: relative;
+  z-index: 1;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(230, 255, 236, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes tapPromptGlow {
+  0%, 100% {
+    opacity: 0.65;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes tapPromptFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
 .finger-icon-overlay {
   position: absolute;
   top: 50%;
@@ -914,150 +981,4 @@ body {
   color: #fff;
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.3);
-}
-
-.grail-card-assembly {
-  --panel-bg: #050505;
-  --frame-metal: linear-gradient(145deg, #2a2a2a 0%, #1a1a1a 50%, #0d0d0d 100%);
-  --frame-highlight: rgba(255, 255, 255, 0.06);
-}
-
-.grail-card-assembly.theme-emerald {
-  --neon-ambient: rgba(127, 255, 127, 0.18);
-}
-
-.grail-card-fixed-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 1; /* above prize sunburst (z-index: 0) so card and clock appear in front */
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  /* padding-top: 3rem; */
-  pointer-events: none;
-}
-
-.grail-card-assembly {
-  position: absolute;
-  top: 3.8rem;
-  left: 50%;
-  z-index: 10;
-  max-width: min(320px, calc(100vw - 2rem));
-  transform-style: preserve-3d;
-}
-
-@media (max-width: 768px) {
-  .grail-card-assembly {
-    top: 2rem;
-  }
-}
-
-.grail-card-assembly.grail-card-descent {
-  opacity: 1;
-  transition: transform 0.1s linear;
-  will-change: transform;
-}
-
-
-.grail-card-frame {
-  position: relative;
-  padding: 10px;
-  background: var(--frame-metal);
-  border-radius: 8px;
-  box-shadow:
-    inset 0 1px 0 var(--frame-highlight),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
-    0 20px 40px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(0, 0, 0, 0.3);
-}
-
-@media (max-width: 768px) {
-  .grail-card-frame {
-    padding: 8px;
-  }
-}
-
-.grail-card-panel {
-  position: relative;
-  background: var(--panel-bg);
-  padding: 2rem 1.5rem 2rem;
-  border-radius: 4px;
-  overflow: visible;
-  box-shadow:
-    inset 0 0 80px rgba(0, 0, 0, 0.7),
-    inset 0 0 100px var(--neon-ambient),
-    inset 0 0 1px rgba(255, 255, 255, 0.02);
-}
-
-@media (max-width: 768px) {
-  .grail-card-panel {
-    padding: 28px 24px;
-  }
-}
-
-.grail-card-panel::before,
-.grail-card-panel::after {
-  content: '';
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: radial-gradient(circle at 35% 35%, #3a3a3a, #151515);
-  border-radius: 50%;
-  border: 1px solid #252525;
-  top: 12px;
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.06);
-}
-
-.grail-card-panel::before {
-  left: 12px;
-}
-
-.grail-card-panel::after {
-  right: 12px;
-}
-
-.grail-card-glass {
-  position: absolute;
-  inset: 0;
-  border-radius: 4px;
-  pointer-events: none;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    transparent 30%,
-    transparent 70%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
-  mix-blend-mode: overlay;
-}
-
-.grail-card-neon {
-  position: relative;
-  overflow: visible;
-}
-
-.grail-card-neon--image {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-@media (max-width: 768px) {
-  .grail-card-neon--image {
-    width: 240px;
-  }
-}
-
-.grail-card-panel-image {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  object-fit: contain;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .grail-card-assembly {
-    animation: none;
-    opacity: 1;
-  }
 }
