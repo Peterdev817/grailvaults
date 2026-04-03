@@ -4,7 +4,30 @@ import { useAnimations, useTexture, useGLTF, Html } from '@react-three/drei'
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { NeonSign } from './NeonSign'
 
-const BELL_WOBBLE_RAD = 0.13
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3)
+}
+
+function setObjectMeshesOpacity(root, value) {
+  const o = Math.min(Math.max(value, 0), 1)
+  const opaque = o >= 1
+  root.traverse((child) => {
+    if (child.isMesh && child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      for (const m of mats) {
+        m.opacity = o
+        if (opaque) {
+          m.transparent = false
+          m.depthWrite = true
+        } else {
+          m.transparent = true
+          m.depthWrite = false
+        }
+        m.needsUpdate = true
+      }
+    }
+  })
+}
 
 export function Box3D({
   scale = 1,
@@ -13,20 +36,25 @@ export function Box3D({
   restRotation = [0, 0, 0],
   tableSurfaceY = 0,
   restScale = 0.36,
+  restOffset = [0, 0, 0],
   heroPositionY = 0.12,
   heroZOffset = 0.95,
   boxOpenDropY = 0.52,
+  boxOpenForwardZ = 0,
   onAppear,
   onBoxComplete,
   onCelebrationStart,
   onWaitingForClick,
   neonTheme = 'emerald',
+  appearFadeMs = 1200,
+  approachZOffset = 0,
 }) {
   const groupRef = useRef()
-  const bellSwingRef = useRef()
   const sceneRef = useRef(null)
-  const appearRunIdRef = useRef(0)
+  const animationStartedRef = useRef(false)
+  const boxFadeGltfRef = useRef(null)
   const [phase, setPhase] = useState('appear')
+  const [showTapPrompt, setShowTapPrompt] = useState(false)
   const [showWatchPlane, setShowWatchPlane] = useState(false)
   const watchMeshRef = useRef()
   const watchGroupRef = useRef()
@@ -36,6 +64,8 @@ export function Box3D({
   const boxOpenStartYRef = useRef(0)
   const boxOpenEndYRef = useRef(0)
   const boxOpenStartZRef = useRef(0)
+  const boxOpenEndZRef = useRef(0)
+  const boxOpenFallbackT0Ref = useRef(null)
   const afterClickStartTimeRef = useRef(null)
   const celebrationScheduledRef = useRef(false)
   const celebrationTimeoutRef = useRef(null)
@@ -49,6 +79,7 @@ export function Box3D({
   const BOX_SCALE = 20
   const CARD_INSIDE_BOX_SCALE = 0.6
   const approachDuration = 0.88
+  const TAP_PROMPT_DELAY_MS = 1000
 
   const approachStartRef = useRef(null)
   const restYRef = useRef(0)
@@ -58,7 +89,29 @@ export function Box3D({
   const heroScaleRef = useRef(scale)
   const heroYRef = useRef(heroPositionY)
   const phaseRef = useRef(phase)
-  phaseRef.current = phase
+  const tableSurfaceYRef = useRef(tableSurfaceY)
+  tableSurfaceYRef.current = tableSurfaceY
+  const onAppearRef = useRef(onAppear)
+  const onWaitingForClickRef = useRef(onWaitingForClick)
+  onAppearRef.current = onAppear
+  onWaitingForClickRef.current = onWaitingForClick
+
+  const posX = (position[0] ?? 0) + (restOffset[0] ?? 0)
+  const posZ = (position[2] ?? 0) + (restOffset[2] ?? 0)
+
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
+
+  useEffect(() => {
+    if (phase !== 'waitingForClick') {
+      setShowTapPrompt(false)
+      return
+    }
+    setShowTapPrompt(false)
+    const id = window.setTimeout(() => setShowTapPrompt(true), TAP_PROMPT_DELAY_MS)
+    return () => window.clearTimeout(id)
+  }, [phase])
 
   const gltf = useGLTF('/box.glb', true)
   sceneRef.current = gltf.scene
@@ -76,15 +129,18 @@ export function Box3D({
         const y0 = groupRef.current.position.y
         boxOpenStartYRef.current = y0
         boxOpenEndYRef.current = y0 - boxOpenDropY
-        boxOpenStartZRef.current = groupRef.current.position.z
+        const z0 = groupRef.current.position.z
+        boxOpenStartZRef.current = z0
+        boxOpenEndZRef.current = z0 + boxOpenForwardZ
       }
+      boxOpenFallbackT0Ref.current = null
       setPhase('boxOpen')
       setShowWatchPlane(true)
     } else {
       setPhase('done')
       onBoxComplete?.()
     }
-  }, [actions, names, onBoxComplete, boxOpenDropY])
+  }, [actions, names, onBoxComplete, boxOpenDropY, boxOpenForwardZ])
 
   const beginGltfOpenRef = useRef(beginGltfOpen)
   beginGltfOpenRef.current = beginGltfOpen
@@ -115,90 +171,140 @@ export function Box3D({
       centerY: center.y,
       height,
     }
-    restYRef.current = tableSurfaceY - restScale * minY * BOX_SCALE
-  }, [gltf, tableSurfaceY, restScale])
+    if (tableSurfaceY != null) {
+      restYRef.current =
+        tableSurfaceY - restScale * minY * BOX_SCALE + (restOffset[1] ?? 0)
+    }
+  }, [gltf, tableSurfaceY, restScale, restOffset[0], restOffset[1], restOffset[2]])
 
   useEffect(() => {
-    if (!gltf?.scene) return
-    if (phase !== 'appear') return
+    if (tableSurfaceY == null) return
+    if (!groupRef.current || !gltf?.scene) return
 
-    const runId = ++appearRunIdRef.current
-    let cancelled = false
-
-    const startAppear = () => {
-      if (cancelled || runId !== appearRunIdRef.current) return
-      if (!groupRef.current) {
-        requestAnimationFrame(startAppear)
-        return
+    if (
+      boxFadeGltfRef.current === gltf.scene &&
+      !animationStartedRef.current
+    ) {
+      setObjectMeshesOpacity(gltf.scene, 1)
+      const sy = tableSurfaceYRef.current
+      const bot = boxBoundsRef.current.minY
+      if (sy != null) {
+        const yNow = sy - restScale * bot * BOX_SCALE + (restOffset[1] ?? 0)
+        groupRef.current.scale.setScalar(restScale)
+        groupRef.current.position.set(posX, yNow, posZ)
+        groupRef.current.rotation.set(restRotation[0], restRotation[1], restRotation[2])
+        restYRef.current = yNow
       }
+      setPhase('waitingForClick')
+      onAppearRef.current?.()
+      onWaitingForClickRef.current?.()
+      animationStartedRef.current = true
+      return
+    }
 
-      const { minY } = boxBoundsRef.current
-      const restY = tableSurfaceY - restScale * minY * BOX_SCALE
-      restYRef.current = restY
+    if (animationStartedRef.current) return
+    animationStartedRef.current = true
+    boxFadeGltfRef.current = gltf.scene
 
-      groupRef.current.scale.set(0, 0, 0)
-      groupRef.current.position.set(position[0], restY, position[2] ?? 0)
-      if (bellSwingRef.current) bellSwingRef.current.rotation.z = 0
+    const minY = boxBoundsRef.current.minY
+    const surface = tableSurfaceYRef.current
+    const restY =
+      surface - restScale * minY * BOX_SCALE + (restOffset[1] ?? 0)
+    restYRef.current = restY
 
+    setObjectMeshesOpacity(gltf.scene, 0)
+    groupRef.current.scale.setScalar(restScale)
+    groupRef.current.position.set(posX, restY, posZ + approachZOffset)
+    groupRef.current.rotation.set(restRotation[0], restRotation[1], restRotation[2])
+
+    let fadeCancelled = false
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (cancelled || runId !== appearRunIdRef.current || !groupRef.current) return
-          const duration = 1200
-          const startTime = Date.now()
+        if (fadeCancelled) return
+        const duration = appearFadeMs
+        const startTime = Date.now()
 
-          const animate = () => {
-            if (cancelled || runId !== appearRunIdRef.current || !groupRef.current) return
+        const animate = () => {
+          if (fadeCancelled || !groupRef.current) return
 
-            const elapsed = Date.now() - startTime
-            const progress = Math.min(elapsed / duration, 1)
-            const eased = 1 - Math.pow(1 - progress, 3)
+          const elapsed = Date.now() - startTime
+          const progress = Math.min(elapsed / duration, 1)
+          const eased = easeOutCubic(progress)
 
-            groupRef.current.scale.setScalar(eased * restScale)
-            groupRef.current.position.set(position[0], restY, position[2] ?? 0)
-            groupRef.current.rotation.set(restRotation[0], restRotation[1], restRotation[2])
+          const sy = tableSurfaceYRef.current
+          const bot = boxBoundsRef.current.minY
+          if (sy == null) return
+          const yNow = sy - restScale * bot * BOX_SCALE + (restOffset[1] ?? 0)
+          const zNow = posZ + approachZOffset * (1 - eased)
 
-            if (progress < 1) requestAnimationFrame(animate)
-            else {
-              onAppear?.()
-              setPhase('waitingForClick')
-              onWaitingForClick?.()
-            }
+          setObjectMeshesOpacity(gltf.scene, eased)
+          groupRef.current.scale.setScalar(restScale)
+          groupRef.current.position.set(posX, yNow, zNow)
+          groupRef.current.rotation.set(restRotation[0], restRotation[1], restRotation[2])
+
+          if (progress < 1) requestAnimationFrame(animate)
+          else {
+            setObjectMeshesOpacity(gltf.scene, 1)
+            restYRef.current = yNow
+            onAppearRef.current?.()
+            setPhase('waitingForClick')
+            onWaitingForClickRef.current?.()
           }
+        }
 
-          requestAnimationFrame(animate)
-        })
+        requestAnimationFrame(animate)
       })
-    }
+    })
 
-    startAppear()
     return () => {
-      cancelled = true
+      fadeCancelled = true
     }
-  }, [gltf, onAppear, onWaitingForClick, phase, position, restRotation, restScale, tableSurfaceY])
+  }, [
+    gltf,
+    posX,
+    posZ,
+    restRotation,
+    restScale,
+    tableSurfaceY,
+    restOffset[0],
+    restOffset[1],
+    restOffset[2],
+    appearFadeMs,
+    approachZOffset,
+  ])
+
+  useEffect(() => {
+    if (tableSurfaceY == null || !groupRef.current) return
+    if (phase !== 'waitingForClick') return
+    const { minY } = boxBoundsRef.current
+    const restY =
+      tableSurfaceY - restScale * minY * BOX_SCALE + (restOffset[1] ?? 0)
+    groupRef.current.position.set(posX, restY, posZ)
+    restYRef.current = restY
+  }, [
+    phase,
+    tableSurfaceY,
+    restScale,
+    posX,
+    posZ,
+    restOffset[0],
+    restOffset[1],
+    restOffset[2],
+  ])
 
   const startBoxOpen = useCallback(() => {
     if (phaseRef.current !== 'waitingForClick' || !groupRef.current) return
-    if (bellSwingRef.current) bellSwingRef.current.rotation.z = 0
     restScaleRef.current = groupRef.current.scale.x
     restYRef.current = groupRef.current.position.y
     restZRef.current = groupRef.current.position.z
     heroScaleRef.current = scale
     heroYRef.current = heroPositionY
-    heroZTargetRef.current = (position[2] ?? 0) + heroZOffset
+    heroZTargetRef.current = posZ + heroZOffset
     approachStartRef.current = null
     setPhase('approachHero')
-  }, [scale, heroPositionY, heroZOffset, position])
+  }, [scale, heroPositionY, heroZOffset, posZ])
 
   useFrame((state) => {
-    if (bellSwingRef.current) {
-      if (phase === 'waitingForClick') {
-        bellSwingRef.current.rotation.z =
-          Math.sin(state.clock.elapsedTime * Math.PI) * BELL_WOBBLE_RAD
-      } else {
-        bellSwingRef.current.rotation.z = 0
-      }
-    }
-
     if (
       (phase === 'waitingForClick' || phase === 'appear') &&
       groupRef.current
@@ -221,7 +327,7 @@ export function Box3D({
       groupRef.current.scale.setScalar(sc)
       const z =
         restZRef.current + (heroZTargetRef.current - restZRef.current) * eased
-      groupRef.current.position.set(position[0], y, z)
+      groupRef.current.position.set(posX, y, z)
       groupRef.current.rotation.set(restRotation[0], restRotation[1], restRotation[2])
 
       if (t >= 1) {
@@ -234,30 +340,45 @@ export function Box3D({
     if (phase === 'boxOpen' && groupRef.current && names.length > 0 && actions[names[0]]) {
       const action = actions[names[0]]
       const clip = action.getClip()
-      if (clip && clip.duration > 0) {
-        const progress = Math.min(action.time / clip.duration, 1)
-        const eased = 1 - Math.pow(1 - progress, 3)
-        const startY = boxOpenStartYRef.current
-        const py = startY + (boxOpenEndYRef.current - startY) * eased
-        groupRef.current.position.set(position[0], py, boxOpenStartZRef.current)
-        const rx = restRotation[0] + (rotation[0] - restRotation[0]) * eased
-        const ry = restRotation[1] + (rotation[1] - restRotation[1]) * eased
-        const rz = restRotation[2] + (rotation[2] - restRotation[2]) * eased
-        groupRef.current.rotation.set(rx, ry, rz)
-        if (watchMeshRef.current) {
-          const { minY, height } = boxBoundsRef.current
-          const cardY = (minY + height * 0.18) * BOX_SCALE
-          watchMeshRef.current.position.set(0, cardY, 0)
-          watchMeshRef.current.scale.setScalar(CARD_INSIDE_BOX_SCALE)
-          watchMeshRef.current.rotation.x = -Math.PI / 2
-          watchMeshRef.current.rotation.y = 0
-          const mat = watchMeshRef.current.material
-          if (mat) mat.opacity = 1
+      const clipDur = clip && clip.duration > 0 ? clip.duration : 0
+      let progress =
+        clipDur > 0
+          ? Math.min(action.time / clipDur, 1)
+          : 0
+      if (clipDur <= 0) {
+        if (boxOpenFallbackT0Ref.current == null) {
+          boxOpenFallbackT0Ref.current = performance.now()
         }
-        if (action.time >= clip.duration - 0.016) {
-          setPhase('watchRise')
-          watchAnimStartTimeRef.current = state.clock.getElapsedTime()
+        progress = Math.min((performance.now() - boxOpenFallbackT0Ref.current) / 2000, 1)
+      }
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const startY = boxOpenStartYRef.current
+      const py = startY + (boxOpenEndYRef.current - startY) * eased
+      const startZ = boxOpenStartZRef.current
+      const pz = startZ + (boxOpenEndZRef.current - startZ) * eased
+      groupRef.current.position.set(posX, py, pz)
+      const rx = restRotation[0] + (rotation[0] - restRotation[0]) * eased
+      const ry = restRotation[1] + (rotation[1] - restRotation[1]) * eased
+      const rz = restRotation[2] + (rotation[2] - restRotation[2]) * eased
+      groupRef.current.rotation.set(rx, ry, rz)
+      if (watchMeshRef.current) {
+        const { minY, height } = boxBoundsRef.current
+        const cardY = (minY + height * 0.18) * BOX_SCALE
+        watchMeshRef.current.position.set(0, cardY, 0)
+        watchMeshRef.current.scale.setScalar(CARD_INSIDE_BOX_SCALE)
+        watchMeshRef.current.rotation.x = -Math.PI / 2
+        watchMeshRef.current.rotation.y = 0
+        const mat = watchMeshRef.current.material
+        if (mat) {
+          mat.opacity = 1
+          mat.depthTest = false
         }
+      }
+      const openDone =
+        clipDur > 0 ? action.time >= clipDur - 0.016 : progress >= 1
+      if (openDone) {
+        setPhase('watchRise')
+        watchAnimStartTimeRef.current = state.clock.getElapsedTime()
       }
     }
 
@@ -330,6 +451,7 @@ export function Box3D({
   useEffect(() => {
     return () => {
       if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current)
+      animationStartedRef.current = false
     }
   }, [])
 
@@ -357,61 +479,60 @@ export function Box3D({
   const { minY, height: bHeight } = boxBoundsRef.current
   const tapHtmlY = (minY + bHeight) * BOX_SCALE + 0.22
 
+  if (tableSurfaceY == null) return null
+
   return (
     <group ref={groupRef}>
-      <group ref={bellSwingRef}>
-        <group ref={boxGroupRef} scale={[BOX_SCALE, BOX_SCALE, BOX_SCALE]}>
-          <primitive object={gltf.scene} />
-        </group>
-        {phase === 'waitingForClick' && (
-          <Html
-            key="tap-to-open"
-            transform
-            center
-            occlude={false}
-            position={[0, tapHtmlY, 0]}
-            distanceFactor={6.5}
-            style={{ pointerEvents: 'auto', zIndex: 2147483646 }}
-          >
-            <div
-              className="tap-prompt-html"
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation()
+      <group ref={boxGroupRef} scale={[BOX_SCALE, BOX_SCALE, BOX_SCALE]}>
+        <primitive object={gltf.scene} />
+      </group>
+      {phase === 'waitingForClick' && showTapPrompt && (
+        <Html
+          transform
+          center
+          position={[0, tapHtmlY, 0]}
+          distanceFactor={6.5}
+          style={{ pointerEvents: 'auto' }}
+          zIndexRange={[16777271, 0]}
+        >
+          <div
+            className="tap-prompt-html"
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              startBoxOpen()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
                 startBoxOpen()
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  startBoxOpen()
-                }
-              }}
+              }
+            }}
+          >
+            <div className="tap-prompt-glow" aria-hidden />
+            <svg
+              className="tap-prompt-chevron"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 32 32"
+              width="28"
+              height="28"
+              aria-hidden
             >
-              <div className="tap-prompt-glow" aria-hidden />
-              <svg
-                className="tap-prompt-chevron"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 32 32"
-                width="28"
-                height="28"
-                aria-hidden
-              >
-                <path
-                  d="M16 8v14M10 18l6 6 6-6"
-                  fill="none"
-                  stroke="rgba(240,248,230,0.92)"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span className="tap-prompt-label">Tap to open</span>
-            </div>
-          </Html>
-        )}
-      </group>
+              <path
+                d="M16 8v14M10 18l6 6 6-6"
+                fill="none"
+                stroke="rgba(240,248,230,0.92)"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="tap-prompt-label">Tap to open</span>
+          </div>
+        </Html>
+      )}
       {showWatchPlane && phase !== 'afterClick' && phase !== 'interactive' && (
         <NeonSign
           position={[0, (boxBoundsRef.current.minY + boxBoundsRef.current.height * 0.11) * BOX_SCALE, 0]}
@@ -427,7 +548,7 @@ export function Box3D({
               position={[0, 0, 0]}
               scale={CARD_INSIDE_BOX_SCALE}
               rotation={[-Math.PI / 2, 0, 0]}
-              renderOrder={2}
+              renderOrder={4}
               onClick={handleWatchClick}
               onPointerOver={phase === 'done' ? setPointerCursor : undefined}
               onPointerOut={phase === 'done' ? setDefaultCursor : undefined}

@@ -1,17 +1,27 @@
 import { useRef, useEffect, useState, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Environment, useGLTF } from '@react-three/drei'
+import { useGLTF } from '@react-three/drei'
+import { LocalEnvironment } from './LocalEnvironment'
 import './styles.css'
 import { Box3D } from './Box3D'
 import { Table3D } from './Table3D'
 import { PrizeSunburstMesh } from './PrizeSunburstMesh'
 import { NEON_THEMES } from './NeonSign'
 
-const TABLE_SCENE_AT_VIDEO_SEC = 7
-const BOX_AFTER_TABLE_DELAY_MS = 550
-const TABLE_BOX_Z = -2.28
-const BOX_HERO_Z_OFFSET = 1.68
-const PRIZE_SUNBURST_Z = TABLE_BOX_Z + BOX_HERO_Z_OFFSET * 0.57
+const TABLE_SCENE_AT_VIDEO_SEC = 6
+const TABLE_BOX_Z = -2.74
+const TABLE_3D_POSITION = [0, -1.4, TABLE_BOX_Z]
+const BOX_3D_POSITION = [0, 0, TABLE_BOX_Z]
+const BOX_HERO_Z_OFFSET = 2.15
+const BOX_OPEN_FORWARD_Z = 0.55
+const OPENED_BOX_Z = TABLE_BOX_Z + BOX_HERO_Z_OFFSET + BOX_OPEN_FORWARD_Z
+const PRIZE_SUNBURST_Z = OPENED_BOX_Z - 0.2
+const SCENE_FADE_IN_MS = 600
+const SCENE_APPROACH_Z_OFFSET = -2.35
+
+const BOX_REST_SCALE = 0.8
+const BOX_REST_OFFSET = [0, 0, 0]
+const BOX_REST_ROTATION = [0, 0, 0]
 
 export const App = () => {
   return (
@@ -27,7 +37,6 @@ function MainAnimation() {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [sceneRevealed, setSceneRevealed] = useState(false)
   const [tableSurfaceY, setTableSurfaceY] = useState(null)
-  const [showBox, setShowBox] = useState(false)
   const [showPrizeSunburst, setShowPrizeSunburst] = useState(false)
   const [neonTheme, setNeonTheme] = useState('emerald')
 
@@ -45,12 +54,6 @@ function MainAnimation() {
   const handleVideoEnded = () => {
     setSceneRevealed(true)
   }
-
-  useEffect(() => {
-    if (!sceneRevealed) return
-    const t = window.setTimeout(() => setShowBox(true), BOX_AFTER_TABLE_DELAY_MS)
-    return () => window.clearTimeout(t)
-  }, [sceneRevealed])
 
   useEffect(() => {
     const video = videoRef.current
@@ -172,14 +175,16 @@ function MainAnimation() {
           <directionalLight position={[0, -3, 2]} intensity={0.15} />
           <pointLight position={[0, 2, 3]} intensity={0.2} distance={8} />
           <Suspense fallback={null}>
-            <Environment preset="sunset" environmentIntensity={0.5} />
+            <LocalEnvironment intensity={0.5} />
           </Suspense>
 
           {sceneRevealed && (
             <Suspense fallback={null}>
               <Table3D
-                modelScale={1.52}
-                position={[0, -1.35, TABLE_BOX_Z]}
+                modelScale={2.38}
+                position={TABLE_3D_POSITION}
+                appearDurationMs={SCENE_FADE_IN_MS}
+                approachZOffset={SCENE_APPROACH_Z_OFFSET}
                 onSurfaceReady={setTableSurfaceY}
               />
             </Suspense>
@@ -187,18 +192,22 @@ function MainAnimation() {
           {sceneRevealed && showPrizeSunburst && (
             <PrizeSunburstMesh z={PRIZE_SUNBURST_Z} y={0.06} planeSize={20} />
           )}
-          {sceneRevealed && showBox && (
+          {sceneRevealed && (
             <Suspense fallback={null}>
               <Box3D
                 scale={1.365}
-                restScale={0.42}
+                appearFadeMs={SCENE_FADE_IN_MS}
+                approachZOffset={SCENE_APPROACH_Z_OFFSET}
+                restScale={BOX_REST_SCALE}
+                restOffset={BOX_REST_OFFSET}
                 heroPositionY={-0.26}
                 heroZOffset={BOX_HERO_Z_OFFSET}
                 boxOpenDropY={0.58}
-                position={[0, 0, TABLE_BOX_Z]}
-                restRotation={[0, 0, 0]}
+                boxOpenForwardZ={BOX_OPEN_FORWARD_Z}
+                position={BOX_3D_POSITION}
+                restRotation={BOX_REST_ROTATION}
                 rotation={[0.36, 0, 0]}
-                tableSurfaceY={tableSurfaceY ?? -1.12}
+                tableSurfaceY={tableSurfaceY}
                 onAppear={() => {}}
                 onCelebrationStart={() => setShowPrizeSunburst(true)}
                 neonTheme={neonTheme}

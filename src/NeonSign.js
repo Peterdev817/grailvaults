@@ -115,7 +115,7 @@ export function NeonSign({ position = [0, 0, 0], rotation = [0, 0, 0], theme = '
   }, [theme])
 
   return (
-    <mesh position={position} rotation={rotation} renderOrder={-1}>
+    <mesh position={position} rotation={rotation} renderOrder={3}>
       <planeGeometry args={[2, 0.5]} />
       <meshBasicMaterial
         map={texture}
@@ -123,7 +123,7 @@ export function NeonSign({ position = [0, 0, 0], rotation = [0, 0, 0], theme = '
         opacity={1}
         alphaTest={0.02}
         depthWrite={false}
-        depthTest={true}
+        depthTest={false}
         side={THREE.DoubleSide}
       />
     </mesh>
