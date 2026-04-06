@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, Suspense } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { SafeCanvas } from './SafeCanvas'
 import { useGLTF } from '@react-three/drei'
 import { LocalEnvironment } from './LocalEnvironment'
 import './styles.css'
@@ -152,7 +152,7 @@ function MainAnimation() {
           isolation: sceneRevealed ? 'isolate' : 'auto',
         }}
       >
-        <Canvas
+        <SafeCanvas
           camera={{
             position: [0, 0, 6.35],
             fov: 42,
@@ -214,7 +214,7 @@ function MainAnimation() {
               />
             </Suspense>
           )}
-        </Canvas>
+        </SafeCanvas>
         {sceneRevealed && (
           <>
             <div className="neon-theme-selector" aria-label="Neon sign theme">

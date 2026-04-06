@@ -18,6 +18,7 @@
     "three": "0.180.0"
   },
   "scripts": {
+    "postinstall": "node scripts/ensure-react-dom-scheduler.js",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
