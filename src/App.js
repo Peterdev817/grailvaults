@@ -34,7 +34,9 @@ export const App = () => {
 function MainAnimation() {
   const containerRef = useRef(null)
   const videoRef = useRef(null)
+  const bgAudioRef = useRef(null)
   const [imageLoaded, setImageLoaded] = useState(false)
+  const [experienceStarted, setExperienceStarted] = useState(false)
   const [sceneRevealed, setSceneRevealed] = useState(false)
   const [tableSurfaceY, setTableSurfaceY] = useState(null)
   const [showPrizeSunburst, setShowPrizeSunburst] = useState(false)
@@ -53,44 +55,59 @@ function MainAnimation() {
 
   const handleVideoEnded = () => {
     setSceneRevealed(true)
+    const audio = bgAudioRef.current
+    if (audio) {
+      audio.pause()
+      audio.currentTime = 0
+    }
+  }
+
+  const syncBgmPlayback = () => {
+    const video = videoRef.current
+    const audio = bgAudioRef.current
+    if (!video || !audio || video.paused) return
+    if (audio.paused) {
+      audio.play().catch(() => {})
+    }
+    const drift = Math.abs(audio.currentTime - video.currentTime)
+    if (drift > 0.35) audio.currentTime = video.currentTime
   }
 
   useEffect(() => {
+    if (!experienceStarted || !imageLoaded) return
     const video = videoRef.current
+    const audio = bgAudioRef.current
     if (!video) return
 
     video.muted = true
     video.playsInline = true
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
-    video.playbackRate = 1.2
+    video.playbackRate = 1
+    video.currentTime = 0
 
-    const playVideo = () => {
-      video.play()
-        .catch((error) => {
-          console.warn('Video autoplay failed:', error)
-          const handleUserInteraction = () => {
-            video.play().then(() => {
-              document.removeEventListener('click', handleUserInteraction, true)
-              document.removeEventListener('touchstart', handleUserInteraction, true)
-              document.removeEventListener('mousedown', handleUserInteraction, true)
-              window.removeEventListener('focus', handleUserInteraction)
-            }).catch(() => {})
-          }
-          document.addEventListener('click', handleUserInteraction, true)
-          document.addEventListener('touchstart', handleUserInteraction, true)
-          document.addEventListener('mousedown', handleUserInteraction, true)
-          window.addEventListener('focus', handleUserInteraction)
-        })
+    if (audio) {
+      audio.playbackRate = 1
+      audio.currentTime = 0
+    }
+
+    const playBoth = () => {
+      const vp = video.play()
+      const ap = audio ? audio.play() : Promise.resolve()
+      return Promise.all([vp, ap])
+    }
+
+    const start = () => {
+      playBoth().catch((err) => console.warn('Playback failed:', err))
     }
 
     if (video.readyState >= 2) {
-      playVideo()
+      start()
     } else {
-      video.addEventListener('canplay', playVideo, { once: true })
-      video.addEventListener('loadeddata', playVideo, { once: true })
+      video.addEventListener('canplay', start, { once: true })
+      video.addEventListener('loadeddata', start, { once: true })
     }
-  }, [])
+  }, [experienceStarted, imageLoaded])
 
   useEffect(() => {
     const img = new Image()
@@ -110,34 +127,72 @@ function MainAnimation() {
 
   return (
     <>
-      <video
-        ref={videoRef}
-        className="intro-video"
-        src="/video.mp4"
-        autoPlay
-        muted
-        playsInline
+      <audio
+        ref={bgAudioRef}
+        className="bgm-audio"
+        src="/background.mp3"
         preload="auto"
+        playsInline
         loop={false}
-        onTimeUpdate={handleVideoTimeUpdate}
-        onEnded={handleVideoEnded}
-        onPlay={() => {
-          const video = videoRef.current
-          if (video) video.playbackRate = 1.2
-          handleVideoTimeUpdate()
-        }}
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          objectFit: 'cover',
-          zIndex: sceneRevealed ? 0 : 1,
-          pointerEvents: sceneRevealed ? 'none' : 'auto',
-        }}
       />
+      {!experienceStarted && (
+        <div
+          className="buy-item-gate"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Start experience"
+        >
+          <button
+            type="button"
+            className="buy-item-btn"
+            onClick={() => setExperienceStarted(true)}
+          >
+            Buy item
+          </button>
+        </div>
+      )}
 
+      {experienceStarted && (
+        <video
+          ref={videoRef}
+          className="intro-video"
+          src="/video.mp4"
+          playsInline
+          preload="auto"
+          loop={false}
+          onTimeUpdate={() => {
+            handleVideoTimeUpdate()
+            syncBgmPlayback()
+          }}
+          onEnded={handleVideoEnded}
+          onPause={() => bgAudioRef.current?.pause()}
+          onPlay={() => {
+            const video = videoRef.current
+            if (video) video.playbackRate = 1
+            const audio = bgAudioRef.current
+            if (audio) {
+              audio.playbackRate = 1
+              if (video && Math.abs(audio.currentTime - video.currentTime) > 0.05) {
+                audio.currentTime = video.currentTime
+              }
+              audio.play().catch(() => {})
+            }
+            handleVideoTimeUpdate()
+          }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            objectFit: 'cover',
+            zIndex: sceneRevealed ? 0 : 1,
+            pointerEvents: sceneRevealed ? 'none' : 'auto',
+          }}
+        />
+      )}
+
+      {experienceStarted && (
       <div
         ref={containerRef}
         className="scene-container canvas-fullscreen"
@@ -233,6 +288,7 @@ function MainAnimation() {
           </>
         )}
       </div>
+      )}
 
     </>
   )

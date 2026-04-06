@@ -31,6 +31,55 @@ body {
   font-size: 24px;
 }
 
+.bgm-audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.buy-item-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(2, 121, 70, 0.94);
+}
+
+.buy-item-btn {
+  font-size: clamp(1.05rem, 2.5vw, 1.35rem);
+  padding: 1rem 2.25rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  background: #fff;
+  color: #027946;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.buy-item-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.22);
+}
+
+.buy-item-btn:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+.buy-item-btn:active {
+  transform: translateY(0);
+}
+
 .intro-video {
   position: fixed;
   top: 0;
